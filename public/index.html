@@ -3,136 +3,236 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Private Web Proxy</title>
+    <title>ShadowBrowse | Private Web</title>
+    <script src="/uv/uv.bundle.js" defer></script>
+    <script src="/uv/uv.config.js" defer></script>
     <style>
-        :root { --bg: #1e1e1e; --text: #ffffff; --accent: #0078d4; --tab-bg: #2d2d2d; }
-        body.light-mode { --bg: #f3f3f3; --text: #000000; --tab-bg: #e0e0e0; }
+        :root {
+            --bg-dark: #121212;
+            --bg-secondary: #1e1e1e;
+            --text-main: #e0e0e0;
+            --accent: #bb86fc;
+            --tab-inactive: #2c2c2c;
+            --danger: #cf6679;
+        }
 
-        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        
-        /* Tab Bar */
-        #tab-bar { display: flex; background: #000; padding: 5px 5px 0 5px; gap: 2px; }
-        .tab { padding: 8px 20px; background: var(--tab-bg); border-radius: 8px 8px 0 0; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 10px; min-width: 100px; }
-        .tab.active { background: var(--bg); border-bottom: 2px solid var(--accent); }
-        .close-tab { color: #ff5f56; font-weight: bold; }
+        * { box-sizing: border-box; transition: all 0.2s ease; }
+        body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: var(--bg-dark); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-        /* Navigation Bar */
-        #nav-bar { display: flex; padding: 10px; gap: 10px; background: var(--bg); align-items: center; border-bottom: 1px solid #444; }
-        #url-input { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #555; background: #333; color: white; outline: none; }
-        button { background: none; border: none; color: var(--text); cursor: pointer; font-size: 18px; }
+        /* Tab Management Bar */
+        #tab-bar { display: flex; background: #000; padding: 8px 8px 0 8px; gap: 4px; align-items: flex-end; }
+        .tab { 
+            padding: 8px 16px; background: var(--tab-inactive); border-radius: 8px 8px 0 0; 
+            cursor: pointer; font-size: 13px; display: flex; align-items: center; 
+            gap: 10px; min-width: 140px; max-width: 200px; border: none; color: #888;
+        }
+        .tab.active { background: var(--bg-secondary); color: var(--accent); font-weight: 600; }
+        .tab:hover:not(.active) { background: #333; }
+        .close-tab { font-size: 16px; color: var(--danger); opacity: 0.6; }
+        .close-tab:hover { opacity: 1; }
+        .add-tab-btn { background: none; border: none; color: white; cursor: pointer; font-size: 20px; padding: 0 10px 5px; }
 
-        /* Viewport */
-        .viewport-container { flex: 1; position: relative; }
-        iframe { width: 100%; height: 100%; border: none; display: none; background: white; }
+        /* Address Bar Area */
+        #nav-bar { 
+            display: flex; padding: 10px 15px; gap: 12px; 
+            background: var(--bg-secondary); align-items: center; 
+            border-bottom: 1px solid #333; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        #url-input { 
+            flex: 1; padding: 10px 18px; border-radius: 25px; 
+            border: 1px solid #444; background: #121212; color: white; 
+            outline: none; font-size: 14px;
+        }
+        #url-input:focus { border-color: var(--accent); box-shadow: 0 0 5px var(--accent); }
+        .nav-btn { background: none; border: none; color: var(--text-main); cursor: pointer; font-size: 18px; padding: 5px; border-radius: 50%; }
+        .nav-btn:hover { background: #333; }
+
+        /* Viewport Styling */
+        #viewports { flex: 1; position: relative; background: #fff; }
+        iframe { width: 100%; height: 100%; border: none; display: none; }
         iframe.active { display: block; }
 
-        /* Settings Overlay */
-        #settings-panel { 
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: var(--tab-bg); padding: 20px; border-radius: 12px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; z-index: 100;
+        /* Settings Modal */
+        #settings-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 1000;
         }
+        .settings-content {
+            background: var(--bg-secondary); padding: 30px; border-radius: 15px;
+            width: 400px; border: 1px solid var(--accent);
+        }
+        .setting-row { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        select, input[type="text"] { background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px; }
     </style>
 </head>
-<body class="dark-mode">
+<body>
 
 <div id="tab-bar">
-    <div id="tabs-list" style="display: flex; gap: 5px;"></div>
-    <button onclick="addTab()" style="font-size: 20px; margin-left: 10px;">+</button>
+    <div id="tabs-list" style="display: flex; gap: 4px;"></div>
+    <button class="add-tab-btn" onclick="createNewTab()">+</button>
 </div>
 
 <div id="nav-bar">
-    <button onclick="location.reload()">↻</button>
-    <input type="text" id="url-input" placeholder="Search or enter URL..." onkeypress="handleKey(event)">
-    <button onclick="toggleSettings()">⚙️</button>
+    <button class="nav-btn" onclick="refreshFrame()">↻</button>
+    <input type="text" id="url-input" placeholder="Search privately or enter URL..." onkeypress="handleUrlInput(event)">
+    <button class="nav-btn" onclick="toggleSettings(true)">⚙️</button>
 </div>
 
-<div class="viewport-container" id="viewports"></div>
+<div id="viewports"></div>
 
-<div id="settings-panel">
-    <h3>Settings</h3>
-    <label>Theme: </label>
-    <select onchange="document.body.className = this.value + '-mode'">
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-    </select>
-    <br><br>
-    <label><input type="checkbox" id="stealth-mode"> Stealth Mode (Hide Title)</label>
-    <br><br>
-    <button onclick="toggleSettings()" style="background: var(--accent); padding: 5px 15px; border-radius: 5px;">Close</button>
+<div id="settings-modal" onclick="toggleSettings(false)">
+    <div class="settings-content" onclick="event.stopPropagation()">
+        <h2 style="margin-top:0; color:var(--accent)">Settings</h2>
+        
+        <div class="setting-row">
+            <label>Proxy Engine</label>
+            <select id="engine-choice">
+                <option value="simple">Simple (Node Backend)</option>
+                <option value="uv">Ultraviolet (Advanced)</option>
+            </select>
+        </div>
+
+        <div class="setting-row">
+            <label>Panic Key (Action)</label>
+            <input type="text" id="panic-url" placeholder="e.g. https://google.com" value="https://classroom.google.com">
+        </div>
+
+        <div class="setting-row">
+            <label>Theme</label>
+            <select onchange="changeTheme(this.value)">
+                <option value="dark">Midnight (Default)</option>
+                <option value="light">Cloud (Light)</option>
+                <option value="hacker">Matrix (Green)</option>
+            </select>
+        </div>
+        
+        <button onclick="toggleSettings(false)" style="width:100%; padding:10px; background:var(--accent); border:none; border-radius:5px; cursor:pointer; font-weight:bold;">Save & Exit</button>
+    </div>
 </div>
 
 <script>
     let tabs = [];
-    let activeTabId = null;
+    let currentTabId = null;
 
-    function addTab() {
-        const id = Date.now();
-        const tab = { id, url: 'about:blank', title: 'New Tab' };
-        tabs.push(tab);
-        
-        // Create Iframe
-        const ifr = document.createElement('iframe');
-        ifr.id = `frame-${id}`;
-        document.getElementById('viewports').appendChild(ifr);
-        
-        switchTab(id);
+    // 1. Tab Management
+    function createNewTab() {
+        const id = 'tab-' + Date.now();
+        const tabObj = { id, title: 'New Tab', url: '' };
+        tabs.push(tabObj);
+
+        const iframe = document.createElement('iframe');
+        iframe.id = `iframe-${id}`;
+        iframe.src = 'about:blank';
+        document.getElementById('viewports').appendChild(iframe);
+
+        setActiveTab(id);
         renderTabs();
     }
 
     function renderTabs() {
-        const list = document.getElementById('tabs-list');
-        list.innerHTML = '';
-        tabs.forEach(t => {
+        const container = document.getElementById('tabs-list');
+        container.innerHTML = '';
+        tabs.forEach(tab => {
             const div = document.createElement('div');
-            div.className = `tab ${t.id === activeTabId ? 'active' : ''}`;
-            div.innerHTML = `<span>${t.title}</span> <span class="close-tab" onclick="closeTab(event, ${t.id})">×</span>`;
-            div.onclick = () => switchTab(t.id);
-            list.appendChild(div);
+            div.className = `tab ${tab.id === currentTabId ? 'active' : ''}`;
+            div.innerHTML = `
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${tab.title}</span>
+                <span class="close-tab" onclick="closeTab(event, '${tab.id}')">×</span>
+            `;
+            div.onclick = () => setActiveTab(tab.id);
+            container.appendChild(div);
         });
     }
 
-    function switchTab(id) {
-        activeTabId = id;
+    function setActiveTab(id) {
+        currentTabId = id;
         document.querySelectorAll('iframe').forEach(f => f.classList.remove('active'));
-        const activeFrame = document.getElementById(`frame-${id}`);
+        const activeFrame = document.getElementById(`iframe-${id}`);
         activeFrame.classList.add('active');
-        document.getElementById('url-input').value = activeFrame.src.includes('/proxy?url=') 
-            ? decodeURIComponent(activeFrame.src.split('url=')[1]) 
-            : '';
+        
+        // Sync URL bar
+        const rawUrl = activeFrame.dataset.originalUrl || '';
+        document.getElementById('url-input').value = rawUrl;
+        
         renderTabs();
     }
 
     function closeTab(e, id) {
         e.stopPropagation();
         tabs = tabs.filter(t => t.id !== id);
-        document.getElementById(`frame-${id}`).remove();
-        if (activeTabId === id && tabs.length > 0) switchTab(tabs[0].id);
-        if (tabs.length === 0) addTab();
+        document.getElementById(`iframe-${id}`).remove();
+        if (currentTabId === id && tabs.length > 0) setActiveTab(tabs[0].id);
+        if (tabs.length === 0) createNewTab();
         renderTabs();
     }
 
-    function handleKey(e) {
+    // 2. Navigation Logic
+    async function handleUrlInput(e) {
         if (e.key === 'Enter') {
-            let url = e.target.value;
-            if (!url.startsWith('http')) url = 'https://' + url;
-            const activeFrame = document.getElementById(`frame-${activeTabId}`);
-            activeFrame.src = `/proxy?url=${encodeURIComponent(url)}`;
+            let input = e.target.value.trim();
+            if (!input.includes('.') && !input.startsWith('http')) {
+                input = `https://www.google.com/search?q=${encodeURIComponent(input)}`;
+            } else if (!input.startsWith('http')) {
+                input = 'https://' + input;
+            }
+
+            const engine = document.getElementById('engine-choice').value;
+            const activeFrame = document.getElementById(`iframe-${currentTabId}`);
             
-            // Update tab title
-            const tab = tabs.find(t => t.id === activeTabId);
-            tab.title = url.split('//')[1].split('/')[0];
+            activeFrame.dataset.originalUrl = input; // Store for the URL bar
+
+            if (engine === 'uv') {
+                // Ultraviolet Integration
+                if ('serviceWorker' in navigator) {
+                    await navigator.serviceWorker.register('/uv/sw.js', { scope: __uv$config.prefix });
+                    activeFrame.src = __uv$config.prefix + __uv$config.encodeUrl(input);
+                }
+            } else {
+                // Our Simple Node Logic
+                activeFrame.src = `/proxy?url=${encodeURIComponent(input)}`;
+            }
+
+            // Update Tab Title
+            tabs.find(t => t.id === currentTabId).title = new URL(input).hostname;
             renderTabs();
         }
     }
 
-    function toggleSettings() {
-        const panel = document.getElementById('settings-panel');
-        panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+    function refreshFrame() {
+        const activeFrame = document.getElementById(`iframe-${currentTabId}`);
+        activeFrame.src = activeFrame.src;
     }
 
-    // Initialize with one tab
-    addTab();
+    // 3. Settings & Extra
+    function toggleSettings(show) {
+        document.getElementById('settings-modal').style.display = show ? 'flex' : 'none';
+    }
+
+    // Panic Key Logic (Alt+Q)
+    window.addEventListener('keydown', (e) => {
+        if (e.altKey && e.key === 'q') {
+            window.location.href = document.getElementById('panic-url').value;
+        }
+    });
+
+    function changeTheme(theme) {
+        const root = document.documentElement;
+        if(theme === 'light') {
+            root.style.setProperty('--bg-dark', '#ffffff');
+            root.style.setProperty('--bg-secondary', '#f0f0f0');
+            root.style.setProperty('--text-main', '#000000');
+        } else if (theme === 'hacker') {
+            root.style.setProperty('--accent', '#00ff00');
+            root.style.setProperty('--bg-dark', '#000000');
+        } else {
+            root.style.setProperty('--bg-dark', '#121212');
+            root.style.setProperty('--bg-secondary', '#1e1e1e');
+            root.style.setProperty('--text-main', '#e0e0e0');
+        }
+    }
+
+    // Initialize first tab
+    createNewTab();
 </script>
 </body>
 </html>
