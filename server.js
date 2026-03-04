@@ -1,6 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const path = require('path');
 const app = express();
 const PORT = 3000;
 
@@ -11,22 +10,29 @@ app.get('/proxy', async (req, res) => {
     if (!targetUrl) return res.status(400).send("No URL provided.");
 
     try {
-        const response = await axios.get(targetUrl, {
-            responseType: 'text',
-            headers: { 'User-Agent': 'Mozilla/5.0' }
+        const response = await axios({
+            method: 'get',
+            url: targetUrl,
+            headers: { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9'
+            },
+            responseType: 'text'
         });
 
         let html = response.data;
+        const origin = new URL(targetUrl).origin;
 
-        // Simple URL Rewriting: Redirect relative links through our proxy
-        // This is a basic regex; advanced proxies use libraries like 'cheerio'
-        const baseUrl = new URL(targetUrl).origin;
-        html = html.replace(/(src|href)="(?!http|https)([^"]+)"/g, `$1="/proxy?url=${baseUrl}$2"`);
+        // Basic URL rewrite for relative paths
+        html = html.replace(/(href|src)="\/([^"]+)"/g, `$1="/proxy?url=${origin}/$2"`);
+        
+        // Privacy: Strip out tracking scripts (basic example)
+        html = html.replace(/<script.*googletagmanager.*<\/script>/g, '');
 
         res.send(html);
     } catch (error) {
-        res.status(500).send("Error fetching the site: " + error.message);
+        res.status(500).send("Error loading page. Some sites block proxying via headers.");
     }
 });
 
-app.listen(PORT, () => console.log(`Proxy running at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`Private Proxy active on port ${PORT}`));
