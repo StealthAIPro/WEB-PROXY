@@ -1,42 +1,34 @@
 const express = require('express');
 const { createServer } = require('node:http');
 const { createBareServer } = require('@tomphttp/bare-server-node');
-const admin = require('firebase-admin');
 const path = require('path');
-
-// 1. Initialize Firebase Admin
-// Replace with the path to your downloaded JSON key
-const serviceAccount = require("./firebase-admin.json");
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
 
 const app = express();
 const bare = createBareServer('/bare/');
 const server = createServer();
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Optional: Simple Password Protection (Replace 'mypassword' with yours)
+const PASSWORD = process.env.PROXY_PASSWORD || 'admin123';
 
-// Middleware to verify Firebase ID Token
-const validateFirebaseToken = async (req, res, next) => {
-    const token = req.headers.authorization;
-    if (!token) return res.status(401).send('No token provided');
-    try {
-        const decodedToken = await admin.auth().verifyIdToken(token);
-        req.user = decodedToken;
-        next();
-    } catch (error) {
-        res.status(403).send('Invalid token');
+app.use((req, res, next) => {
+    // Basic Auth check for the UI and Proxy logic
+    const auth = { login: 'admin', password: PASSWORD };
+    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
+
+    if (login && password && login === auth.login && password === auth.password) {
+        return next();
     }
-};
-
-// Simple Proxy Route (Protected)
-app.get('/proxy', validateFirebaseToken, async (req, res) => {
-    const targetUrl = req.query.url;
-    // ... (Your axios fetching logic from previous steps)
+    res.set('WWW-Authenticate', 'Basic realm="401"');
+    res.status(401).send('Authentication required.');
 });
 
-// Route requests to Bare Server (UV) or Express
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Health check for Northflank
+app.get('/health', (req, res) => res.status(200).send('OK'));
+
+// Route requests
 server.on('request', (req, res) => {
     if (bare.shouldRoute(req)) {
         bare.routeRequest(req, res);
@@ -53,4 +45,7 @@ server.on('upgrade', (req, socket, head) => {
     }
 });
 
-server.listen(3000, () => console.log('Secured Proxy on port 3000'));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`ShadowBrowse running on port ${PORT}`);
+});
