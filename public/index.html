@@ -2,117 +2,78 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ShadowBrowse Pro</title>
+    <title>ShadowBrowse | Standalone</title>
     <script src="/uv/uv.bundle.js" defer></script>
     <script src="/uv/uv.config.js" defer></script>
     <style>
-        /* Add a simple style for the login gate */
-        #auth-gate { position: fixed; inset: 0; background: #121212; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .hidden { display: none !important; }
+        /* Re-insert your previous CSS here */
+        :root { --bg: #121212; --accent: #bb86fc; --text: #e0e0e0; }
+        body { margin: 0; font-family: sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+        #nav { display: flex; padding: 10px; gap: 10px; background: #1e1e1e; }
+        input { flex: 1; padding: 8px; border-radius: 20px; border: 1px solid #444; background: #000; color: #fff; }
+        #tabs { display: flex; background: #000; padding: 5px 5px 0; gap: 5px; }
+        .tab { padding: 8px 15px; background: #2c2c2c; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 12px; }
+        .tab.active { background: #1e1e1e; color: var(--accent); }
+        iframe { flex: 1; border: none; background: white; display: none; }
+        iframe.active { display: block; }
     </style>
 </head>
 <body>
 
-<div id="auth-gate">
-    <h1 style="color:#bb86fc">ShadowBrowse Login</h1>
-    <input type="email" id="email" placeholder="Email" style="margin:5px; padding:10px;">
-    <input type="password" id="pass" placeholder="Password" style="margin:5px; padding:10px;">
-    <button onclick="handleSignIn()" style="margin-top:10px; padding:10px 30px;">Login</button>
+<div id="tabs"></div>
+<div id="nav">
+    <button onclick="createNewTab()">+</button>
+    <input type="text" id="url-input" placeholder="Type a URL and press Enter..." onkeypress="if(e=event,e.key==='Enter') navigate(e.target.value)">
 </div>
+<div id="viewports" style="flex:1; display:flex; flex-direction:column;"></div>
 
-<div id="main-ui" class="hidden">
-    <div id="tab-bar">
-        <div id="tabs-list"></div>
-        <button onclick="createNewTab()">+</button>
-    </div>
-    <div id="nav-bar">
-        <input type="text" id="url-input" onkeypress="handleUrlInput(event)">
-        <button onclick="signOutUser()">Logout</button>
-    </div>
-    <div id="viewports"></div>
-</div>
-
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-    const firebaseConfig = { /* YOUR CONFIG HERE */ };
-    const fbApp = initializeApp(firebaseConfig);
-    const auth = getAuth(fbApp);
-    const db = getFirestore(fbApp);
-
-    let currentUser = null;
+<script>
     let tabs = [];
+    let activeId = null;
 
-    // --- AUTH LOGIC ---
-    window.handleSignIn = () => {
-        const e = document.getElementById('email').value;
-        const p = document.getElementById('pass').value;
-        signInWithEmailAndPassword(auth, e, p).catch(err => alert(err.message));
-    };
+    function createNewTab() {
+        const id = 'tab-' + Date.now();
+        tabs.push({ id, title: 'New Tab' });
+        
+        const ifr = document.createElement('iframe');
+        ifr.id = `frame-${id}`;
+        document.getElementById('viewports').appendChild(ifr);
+        
+        switchTab(id);
+    }
 
-    window.signOutUser = () => signOut(auth);
+    function switchTab(id) {
+        activeId = id;
+        document.querySelectorAll('iframe').forEach(f => f.classList.remove('active'));
+        document.getElementById(`frame-${id}`).classList.add('active');
+        renderTabs();
+    }
 
-    onAuthStateChanged(auth, (user) => {
-        if (user) {
-            currentUser = user;
-            document.getElementById('auth-gate').classList.add('hidden');
-            document.getElementById('main-ui').classList.remove('hidden');
-            startSyncing();
-        } else {
-            location.reload(); // Hard reset on logout
-        }
-    });
-
-    // --- FIRESTORE SYNCING ---
-    function startSyncing() {
-        // Listen for tab changes from other devices
-        onSnapshot(doc(db, "users", currentUser.uid), (doc) => {
-            if (doc.exists() && doc.data().tabs) {
-                const remoteTabs = doc.data().tabs;
-                if (JSON.stringify(remoteTabs) !== JSON.stringify(tabs)) {
-                    // Logic to rebuild tabs from remote data
-                    console.log("Syncing tabs from cloud...");
-                }
-            }
+    function renderTabs() {
+        const container = document.getElementById('tabs');
+        container.innerHTML = '';
+        tabs.forEach(t => {
+            const el = document.createElement('div');
+            el.className = `tab ${t.id === activeId ? 'active' : ''}`;
+            el.innerText = t.title;
+            el.onclick = () => switchTab(t.id);
+            container.appendChild(el);
         });
     }
 
-    async function syncToCloud() {
-        if (!currentUser) return;
-        await setDoc(doc(db, "users", currentUser.uid), {
-            tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url })),
-            lastUpdated: Date.now()
-        }, { merge: true });
+    async function navigate(url) {
+        if (!url.startsWith('http')) url = 'https://' + url;
+        const frame = document.getElementById(`frame-${activeId}`);
+        
+        // Ensure UV Service Worker is ready
+        await navigator.serviceWorker.register('/uv/sw.js', { scope: __uv$config.prefix });
+        
+        frame.src = __uv$config.prefix + __uv$config.encodeUrl(url);
+        tabs.find(t => t.id === activeId).title = new URL(url).hostname;
+        renderTabs();
     }
 
-    // --- NAVIGATION LOGIC ---
-    window.handleUrlInput = async (e) => {
-        if (e.key === 'Enter') {
-            const url = e.target.value;
-            const activeFrame = document.querySelector('iframe.active');
-            
-            // Register UV Service Worker
-            await navigator.serviceWorker.register('/uv/sw.js', { scope: __uv$config.prefix });
-            
-            activeFrame.src = __uv$config.prefix + __uv$config.encodeUrl(url);
-            
-            // Update local state and sync
-            const tab = tabs.find(t => t.id === currentTabId);
-            tab.url = url;
-            tab.title = new URL(url).hostname;
-            syncToCloud(); 
-        }
-    };
-
-    // Initialize first tab
-    window.createNewTab = () => {
-        const id = 'tab-' + Date.now();
-        tabs.push({ id, title: 'New Tab', url: '' });
-        // Create Iframe logic...
-        syncToCloud();
-    };
+    createNewTab();
 </script>
 </body>
 </html>
