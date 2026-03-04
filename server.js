@@ -1,38 +1,26 @@
 const express = require('express');
 const axios = require('axios');
+const path = require('path');
 const app = express();
 const PORT = 3000;
 
 app.use(express.static('public'));
 
+// --- LOGIC 1: Custom Node Proxy (Simple/Fast) ---
 app.get('/proxy', async (req, res) => {
-    const targetUrl = req.query.url;
-    if (!targetUrl) return res.status(400).send("No URL provided.");
-
     try {
-        const response = await axios({
-            method: 'get',
-            url: targetUrl,
-            headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9'
-            },
-            responseType: 'text'
-        });
-
+        const target = req.query.url;
+        const response = await axios.get(target, { responseType: 'text' });
         let html = response.data;
-        const origin = new URL(targetUrl).origin;
-
-        // Basic URL rewrite for relative paths
-        html = html.replace(/(href|src)="\/([^"]+)"/g, `$1="/proxy?url=${origin}/$2"`);
-        
-        // Privacy: Strip out tracking scripts (basic example)
-        html = html.replace(/<script.*googletagmanager.*<\/script>/g, '');
-
+        const origin = new URL(target).origin;
+        // Rewrite basic paths
+        html = html.replace(/(src|href)="\/([^"]+)"/g, `$1="/proxy?url=${origin}/$2"`);
         res.send(html);
-    } catch (error) {
-        res.status(500).send("Error loading page. Some sites block proxying via headers.");
-    }
+    } catch (e) { res.status(500).send("Error"); }
 });
 
-app.listen(PORT, () => console.log(`Private Proxy active on port ${PORT}`));
+// --- LOGIC 2: Ultraviolet (Advanced) ---
+// In a real production setup, you would serve UV files from node_modules
+// For this demo, we assume uv.config.js and uv.bundle.js are in /public/uv/
+
+app.listen(PORT, () => console.log(`Proxy running: http://localhost:${PORT}`));
